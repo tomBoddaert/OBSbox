@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>OBSbox</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Material+Icons+Outlined&display=swap');
+
+        :root {
+            --font-size: 2.5vmin;
+            --text-colour: #eee;
+        }
+
+        body {
+            background-color: #222;
+            color: var(--text-colour);
+            font-family: 'Roboto', 'Arial', sans-serif;
+            font-size: var(--font-size);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .module {
+            background-color: #333;
+            margin: 1em;
+            border-radius: 1.5em;
+            padding: 1em 1.5em;
+        }
+
+        .module::before {
+            content: attr(module);
+            font-size: 1.5em;
+        }
+
+        .instance {
+            background-color: #444;
+            margin: 1em;
+            border-radius: 1em;
+            padding: 0.5em 1em;
+        }
+
+        .instance:not(.prototype)::before {
+            content: '[ ' attr(instNo) ' ]';
+            font-size: 0.75em;
+            vertical-align: text-top;
+        }
+
+        .instance.prototype {
+            background-color: #445;
+        }
+
+        .input {
+            display: inline;
+            margin: 1em 1em;
+            white-space: nowrap;
+        }
+
+        button.create-instance {
+            font-size: 1em;
+            padding: 0.2em 0.25em;
+            float: right;
+        }
+
+        button.confirm-instance {
+            font-size: 1em;
+            padding: 0.2em 0.25em;
+            margin: 0 0.5em;
+            vertical-align: text-top;
+        }
+
+        button.destroy-instance {
+            font-size: 1em;
+            padding: 0.2em 0.25em;
+            margin: 0 0.5em;
+            vertical-align: text-top;
+        }
+
+        button {
+            background-color: #555;
+            color: var(--text-colour);
+            font-size: 0.75em;
+            font-family: 'Roboto', 'Arial', sans-serif;
+            padding: 0.25em 0.5em;
+            margin: 0.5em 0;
+            border-radius: 0.25em;
+            border-style: solid;
+            border-color: #666;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        button:hover {
+            background-color: #666;
+            border-color: #555;
+        }
+
+        button.clicked {
+            background-color: #777;
+            transform: scale(0.9);
+        }
+
+        input[type=text], input[type=number] {
+            background-color: #555;
+            color: var(--text-colour);
+            font-size: 0.75em;
+            font-family: 'Roboto', 'Arial', sans-serif;
+            padding: 0.1em 0.2em;
+            border-radius: 0.25em;
+            border-style: solid;
+            border-color: #666;
+            margin-left: 1em;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        'use strict';
+
+        // Custom find in array function
+        function find(array, check) {
+            for (const entry of array)
+                if (check(entry))
+                    return entry
+
+            return undefined
+        }
+
+        const moduleElems = {};
+
+        // responseQueue: {type: string, callback: response => void}[]
+        const responseQueue = [{type: 'moduleData', callback: data => {
+            // On the first update, create the module templates and divs
+            for (const module of data.data) {
+                // Create the module div
+                const moduleElem = document.createElement('div');
+                moduleElem.classList.add('module');
+                moduleElem.setAttribute('module', module.module);
+
+                // Create createInst button
+                const createInstElem = document.createElement('button');
+                createInstElem.classList.add('create-instance', 'material-icons-outlined');
+                createInstElem.textContent = 'add';
+                createInstElem.addEventListener('click', handleCreateInst);
+                // Add createInst button to template div
+                moduleElem.appendChild(createInstElem);
+
+                // Add the module div to the page and moduleElems
+                moduleElems[module.module] = {moduleElem: moduleElem, elemInstances: {}, inputs: module.inputs};
+                document.body.appendChild(moduleElem);
+
+                // Create the module template
+                const instTemp = document.createElement('template');
+                const instDiv = document.createElement('div');
+                instDiv.classList.add('instance');
+                for (const [input, type] of Object.entries(module.inputs)) {
+                    // Create inputDiv for each input
+                    const inputDiv = document.createElement('label');
+                    inputDiv.classList.add('input');
+                    inputDiv.setAttribute('input', input);
+                    inputDiv.setAttribute('type', type);
+                    // Crate inputElem for type of input
+                    let inputElem;
+                    switch (type) {
+                        case 'button':
+                            inputElem = document.createElement('button');
+                            inputElem.innerText = input;
+                            break;
+
+                        case 'checkbox':
+                            inputDiv.innerText = input;
+                            inputElem = document.createElement('input');
+                            inputElem.setAttribute('type', 'checkbox');
+                            break;
+
+                        case 'text':
+                            inputDiv.innerText = input;
+                            inputElem = document.createElement('input');
+                            inputElem.setAttribute('type', 'text');
+                            break;
+
+                        case 'int':
+                            inputDiv.innerText = input;
+                            inputElem = document.createElement('input');
+                            inputElem.setAttribute('type', 'number');
+                            break;
+
+                        case 'float':
+                            inputDiv.innerText = input;
+                            inputElem = document.createElement('input');
+                            inputElem.setAttribute('type', 'number');
+                            break;
+
+                        default:
+                            continue;
+                    }
+
+                    // Add inputElem to inputDiv
+                    inputDiv.appendChild(inputElem);
+                    // Add inputDiv to template div
+                    instDiv.appendChild(inputDiv);
+                }
+
+                // Create delete button
+                const deleteElem = document.createElement('button');
+                deleteElem.classList.add('destroy-instance', 'material-icons-outlined');
+                deleteElem.textContent = 'delete';
+                // Add delete button to template div
+                instDiv.appendChild(deleteElem);
+
+                // Place template div in template element
+                instTemp.content.appendChild(instDiv);
+                // Add template element to module div and moduleElems
+                moduleElem.appendChild(instTemp);
+                moduleElems[module.module].instTemp = instTemp;
+            }
+
+            // Run updateModuleData to add running instances
+            updateModuleData(data.data);
+        }}]
+
+        // Create websocket and request module data
+        const webSocket = new WebSocket(`ws://${window.location.hostname}:8081`);
+        webSocket.onopen = event => webSocket.send(JSON.stringify({ cmd: 'getData' }));
+
+        // When a message is recieved,
+        webSocket.onmessage = event => {
+            const data = JSON.parse(event.data);
+            console.log(data);
+
+            // if the data is of the type needed by the first entry on the responseQueue, divert the data to it,
+            if (responseQueue[0] && data.type === responseQueue[0].type)
+                return responseQueue.shift().callback(data);
+
+            // otherwise, if the data is module data, run updateModuleData
+            if (data.type === 'moduleData')
+                return updateModuleData(data.data);
+
+            if (data.type === 'input')
+                return updateInput(data.data);
+
+            if (data.type === 'createdInstance')
+                return updateCreatedInstance(data.data);
+
+            if (data.type === 'removedInstance')
+                return updateRemovedInstance(data.data);
+        }
+
+        function updateInputDiv(inputDiv, value) {
+            // Get the type of input
+            const type = inputDiv.getAttribute('type');
+            // Set the value
+            switch (type) {
+                case 'button':
+                    if (!value) break;
+                    inputDiv.firstElementChild.classList.add('clicked');
+                    setTimeout(() =>
+                        inputDiv.firstElementChild.classList.remove('clicked')
+                    , 200);
+                    break;
+
+                case 'checkbox':
+                    inputDiv.firstElementChild.checked = value;
+                    break;
+
+                case 'text':
+                case 'int':
+                case 'float':
+                    inputDiv.firstElementChild.value = value;
+                    break;
+            }
+        }
+
+        function updateInput(data) {
+            const inputDiv = [...moduleElems[data.module].elemInstances[data.instNo].children].find(child => child.getAttribute('input') === data.input);
+            if (inputDiv)
+                updateInputDiv(inputDiv, data.value);
+        }
+
+        function updateCreatedInstance(data) {
+            const {moduleElem, instTemp, elemInstances} = moduleElems[data.module];
+            // Clone the instance template
+            const instElem = instTemp.content.firstChild.cloneNode(true);
+            instElem.setAttribute('instNo', data.instNo.toString());
+
+            // For every input in the instance, add the appropriate event listener
+            for (const inputDiv of [...instElem.children].slice(0, -1)) {
+                const input = inputDiv.getAttribute('input');
+                switch (inputDiv.getAttribute('type')) {
+                    case 'button':
+                        inputDiv.firstElementChild.addEventListener('click', handleChange);
+                        if (!data.instData[input])
+                            break;
+                        inputDiv.firstElementChild.classList.add('clicked');
+                        setTimeout(() =>
+                            inputDiv.firstElementChild.classList.remove('clicked')
+                        , 200);
+                        break;
+
+                    case 'checkbox':
+                        inputDiv.firstElementChild.addEventListener('input', handleChange);
+                        inputDiv.firstElementChild.checked = data.instData[input];
+                        break;
+
+                    case 'text':
+                    case 'int':
+                    case 'float':
+                        inputDiv.firstElementChild.addEventListener('input', handleChange);
+                        inputDiv.firstElementChild.value = data.instData[input];
+                        break;
+                }
+            }
+            instElem.children[instElem.childElementCount - 1].addEventListener('click', handleChange);
+            // Add the instance to the module div and moduleElems
+            moduleElem.appendChild(instElem);
+            elemInstances[data.instNo] = instElem;
+        }
+
+        function updateRemovedInstance(data) {
+            // Get module
+            const {elemInstances} = moduleElems[data.module];
+            // Remove instance from DOM
+            elemInstances[data.instNo].remove();
+            // Remove instance from elemInstances
+            delete elemInstances[data.instNo];
+        }
+
+        // Update all the module data
+        function updateModuleData(data) {
+            for (const {module, instances} of data) {
+                const {moduleElem, elemInstances} = moduleElems[module];
+                for (const [instNo, instance] of Object.entries(instances)) {
+                    if (!(instNo in elemInstances)) {
+                        // If the instance is not already on the page add it
+                        updateCreatedInstance({
+                            module,
+                            instNo,
+                            instData: instance
+                        });
+                    } else {
+                        // If the instance already exists, get it from elemInstances
+                        const instElem = elemInstances[instNo];
+
+                        // Update values
+                        for (const inputDiv of [...instElem.children].slice(0, -1)) {
+                            // Get the value and type of the input
+                            const value = instance[inputDiv.getAttribute('input')];
+                            updateInputDiv(inputDiv, value);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle change events
+        function handleChange(event) {
+            const type = event.path[1].getAttribute('type');
+            let value;
+            switch (type) {
+                case 'button':
+                    value = true;
+                    break;
+
+                case 'checkbox':
+                    value = event.srcElement.checked;
+                    break;
+
+                case 'text':
+                    value = event.srcElement.value;
+                    break;
+
+                case 'int':
+                    value = ~~parseFloat(event.srcElement.value || '0');
+                    break;
+
+                case 'float':
+                    value = parseFloat(event.srcElement.value || '0');
+                    break;
+
+                case null:
+                    if (!event.srcElement.classList.contains('destroy-instance'))
+                        return;
+                    event.srcElement.classList.add('clicked');
+                    return webSocket.send(JSON.stringify({
+                        cmd: 'destroyInstance',
+                        data: {
+                            module: event.path[2].getAttribute('module'),
+                            instNo: parseInt(event.path[1].getAttribute('instNo'))
+                        }
+                    }));
+
+                default:
+                    return;
+            }
+
+            // Send the update
+            webSocket.send(JSON.stringify({
+                cmd: 'setInput',
+                data: {
+                    module: event.path[3].getAttribute('module'),
+                    instNo: parseInt(event.path[2].getAttribute('instNo')),
+                    input: event.path[1].getAttribute('input'),
+                    value: value
+                }
+            }));
+        }
+
+        function handleCreateInst(event) {
+            const module = event.path[1].getAttribute('module');
+
+            const {moduleElem, instTemp} = moduleElems[module];
+            moduleElem.children[0].classList.add('hidden');
+
+            // Clone the instance template
+            const instElem = instTemp.content.firstChild.cloneNode(true);
+            instElem.classList.add('prototype');
+
+            const inputs = {};
+
+            for (const inputDiv of [...instElem.children]) {
+                const inputElem = inputDiv.children[0];
+                switch (inputDiv.getAttribute('type')) {
+                    case 'button':
+                        inputs[inputDiv.getAttribute('input')] = () => false;
+                        inputDiv.remove();
+                        break;
+
+                    case 'checkbox':
+                        inputs[inputDiv.getAttribute('input')] = () => inputElem.checked;
+                        break;
+
+                    case 'text':
+                        inputs[inputDiv.getAttribute('input')] = () => inputElem.value;
+                        break;
+
+                    case 'int':
+                        inputs[inputDiv.getAttribute('input')] = () => ~~parseFloat(inputElem.value || '0');
+                        break;
+
+                    case 'float':
+                        inputs[inputDiv.getAttribute('input')] = () => parseFloat(inputElem.value || '0');
+                        break;
+
+                    case null:
+                        if (!inputDiv.classList.contains('destroy-instance'))
+                            break;
+                        inputDiv.addEventListener('click', () => {
+                            instElem.remove();
+                            moduleElem.children[0].classList.remove('hidden');
+                        });
+                        break;
+                }
+            }
+
+            const confirmElem = document.createElement('button');
+            confirmElem.classList.add('confirm-instance','material-icons-outlined');
+            confirmElem.innerText = 'check';
+            confirmElem.addEventListener('click', event => {
+                Object.keys(inputs).forEach(input => {
+                    inputs[input] = inputs[input]();
+                });
+                // Send the update
+                webSocket.send(JSON.stringify({
+                    cmd: 'createInstance',
+                    data: {
+                        module: event.path[2].getAttribute('module'),
+                        inputs: inputs
+                    }
+                }));
+                instElem.remove();
+                moduleElem.children[0].classList.remove('hidden');
+            });
+            instElem.appendChild(confirmElem);
+
+            // Add the instance to the module div and moduleElems
+            moduleElem.appendChild(instElem);
+        }
+    </script>
+</body>
+
+</html>
