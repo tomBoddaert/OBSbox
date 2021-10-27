@@ -1,8 +1,10 @@
 print('OBSbox starting...')
 
 debug = False
+server_ip = 'localhost'
+web_port = 8080
+API_port = 8081
 
-from concurrent.futures import thread
 import os, asyncio, threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
@@ -34,6 +36,27 @@ if debug: print('OBSbox modules imported')
 def script_description():
     return 'OBSbox\n  Add plugins to OBS with a web interface'
 
+def script_properties():  # ui
+    props = obs.obs_properties_create()
+    obs.obs_properties_add_text(props, "_ip_addr", "IP address:", obs.OBS_TEXT_DEFAULT)
+    obs.obs_properties_add_int(props, "_web_port", "Webserver port:", 1, 65535, 1)
+    obs.obs_properties_add_int(props, "_api_port", "API port:", 1, 65535, 1)
+    return props
+
+def script_defaults(settings):
+    obs.obs_data_set_default_string(settings, "_ip_addr", "localhost")
+    obs.obs_data_set_default_int(settings, "_web_port", 8080)
+    obs.obs_data_set_default_int(settings, "_api_port", 8081)
+
+def script_update(settings):
+    global homepage, server_ip, web_port, API_port
+    server_ip = obs.obs_data_get_string(settings, "_ip_addr")
+    web_port = obs.obs_data_get_int(settings, "_web_port")
+    API_port = obs.obs_data_get_int(settings, "_api_port")
+    homepage = homepage_temp.replace('{{websocket_port}}', str(API_port))
+    print("starting")
+    start()
+
 def script_tick(dt):
     for module in modules:
         if hasattr(module, 'tick'):
@@ -43,7 +66,9 @@ def script_tick(dt):
 # --- Web interface ---
 
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'index.html'), 'r') as file:
-    homepage = file.read()
+    homepage_temp = file.read()
+
+homepage = homepage_temp.replace('{{websocket_port}}', str(API_port))
 
 class handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -92,7 +117,7 @@ def render_homepage():
         return homepage
 
     with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'index.html'), 'r') as file:
-        return file.read()
+        return file.read().replace('{{websocket_port}}', str(API_port))
 
 if debug: print('OBSbox webpage setup')
 
@@ -266,38 +291,42 @@ if debug: print('OBSbox API setup')
 
 # --- Servers ---
 
-server_ip = '192.168.1.15'
-server_address = (server_ip, 8080)
-api_address = (server_ip, 8081)
+def start():
+    print("starting 2")
+    web_address = (server_ip, web_port)
+    api_address = (server_ip, API_port)
 
-def start_API():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    def start_API():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-    start_server = websockets.serve(ws_api, api_address[0], api_address[1])
-    if debug: print('Starting API at', api_address)
+        start_server = websockets.serve(ws_api, api_address[0], api_address[1])
+        if debug: print('Starting API at', api_address)
 
-    asyncio.get_event_loop().run_until_complete(start_server)
-    asyncio.get_event_loop().run_forever()
+        asyncio.get_event_loop().run_until_complete(start_server)
+        asyncio.get_event_loop().run_forever()
 
-def start_webserver():
-    server = HTTPServer(server_address, handler)
-    if debug: print('Starting a server at', server_address)
+    def start_webserver():
+        webserver = HTTPServer(web_address, handler)
+        if debug: print('Starting a server at', web_address)
 
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
+        try:
+            webserver.serve_forever()
+        except KeyboardInterrupt:
+            pass
 
-    server.server_close()
+        webserver.server_close()
 
-APIthread = threading.Thread(target = start_API)
-APIthread.daemon = True
-APIthread.start()
+    APIthread = threading.Thread(target = start_API)
+    APIthread.daemon = True
+    APIthread.start()
+
+    if __name__ == '__main__':
+        start_webserver()
+    else:
+        webserverThread = threading.Thread(target = start_webserver)
+        webserverThread.daemon = True
+        webserverThread.start()
 
 if __name__ == '__main__':
-    start_webserver()
-else:
-    webserverThread = threading.Thread(target = start_webserver)
-    webserverThread.daemon = True
-    webserverThread.start()
+    start('localhost')

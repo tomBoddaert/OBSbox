@@ -224,7 +224,7 @@
         }}]
 
         // Create websocket and request module data
-        const webSocket = new WebSocket(`ws://${window.location.hostname}:8081`);
+        const webSocket = new WebSocket(`ws://${window.location.hostname}:{{websocket_port}}`);
         webSocket.onopen = event => webSocket.send(JSON.stringify({ cmd: 'getData' }));
 
         // When a message is recieved,

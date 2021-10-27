@@ -1,4 +1,4 @@
-class Main:
+class Main_dummy:
     base = 'OBSbox'
     name = 'OBSdummy'
     description = 'Dummy OBS plugin'
@@ -12,9 +12,9 @@ class Main:
 
     def __init__(self, inputs):
         print("bounce initialised")
-        Main.lastInstNo += 1
-        self.instNo = Main.lastInstNo
-        Main.instances[self.instNo] = self
+        Main_dummy.lastInstNo += 1
+        self.instNo = Main_dummy.lastInstNo
+        Main_dummy.instances[self.instNo] = self
         self.data = inputs
 
     def setInput(self, inputs):
@@ -25,4 +25,4 @@ class Main:
             self.data['execute'] = False
 
     def destroy(self):
-        del Main.instances[self.instNo]
+        del Main_dummy.instances[self.instNo]

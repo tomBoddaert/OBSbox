@@ -1,5 +1,8 @@
 # Caches
 /__pycache__
 
+# Saved data
+data.json
+
 # Tests
 test.py
