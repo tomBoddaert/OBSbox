@@ -149,6 +149,15 @@
                 // Add createInst button to template div
                 moduleElem.appendChild(createInstElem);
 
+                // If there is a description, add a description element
+                if (module.description) {
+                    moduleElem.appendChild(document.createElement('br'));
+                    const descriptionElem = document.createElement('span');
+                    descriptionElem.classList.add('module-description');
+                    descriptionElem.textContent = module.description;
+                    moduleElem.appendChild(descriptionElem);
+                }
+
                 // Add the module div to the page and moduleElems
                 moduleElems[module.module] = {moduleElem: moduleElem, elemInstances: {}, inputs: module.inputs};
                 document.body.appendChild(moduleElem);
